@@ -4,8 +4,8 @@ use bevy_mod_openxr::types::EnvironmentBlendMode;
 use bevy_rapier3d::prelude::*;
 use bevy_xr_utils;
 use bevy_mod_xr::session::XrTrackingRoot;
-//use bevy_inspector_egui::bevy_egui::EguiPlugin;
-//use bevy_inspector_egui::quick::WorldInspectorPlugin;
+use bevy_inspector_egui::bevy_egui::EguiPlugin;
+use bevy_inspector_egui::quick::WorldInspectorPlugin;
 
 // todo Publish to bevy_xr_utils context.
 mod xr_camera_mirroring_plugin;
@@ -38,8 +38,8 @@ impl Plugin for VrDemoPlugin {
         .add_plugins(bevy_mod_xr::hand_debug_gizmos::HandGizmosPlugin)
         .add_plugins(bevy_xr_utils::tracking_utils::TrackingUtilitiesPlugin)
         .add_plugins(xr_camera_mirroring_plugin::XrCameraMirroringPlugin)
-            //.add_plugins(EguiPlugin::default())
-            //.add_plugins(WorldInspectorPlugin::new())
+            .add_plugins(EguiPlugin::default())
+            .add_plugins(WorldInspectorPlugin::new())
         .add_systems(Startup, setup)
         .add_systems(Update, (platform_controls, follow_xr_rig))
         .insert_resource(ClearColor(Color::NONE));
@@ -79,31 +79,33 @@ fn setup(
     commands.spawn((
         SteerablePlatform,
         PlatformController {
-            speed: 0.2,
+            speed: 0.8,
             rotation_speed: 0.5,
         },
         Mesh3d(meshes.add(Cuboid::new(2.0, 0.2, 2.0))),
         MeshMaterial3d(materials.add(Color::srgb_u8(100, 200, 100))),
-        Transform::from_xyz(-2.0, 0.10, 0.0), // Position in front and below VR camera
+        Transform::from_xyz(0.0, 0.10, 3.0),
         RigidBody::KinematicPositionBased,
         Collider::cuboid(1.0, 0.1, 1.0),
     ));
 }
 
 fn platform_controls(
+    time: Res<Time>,
     keys: Res<ButtonInput<KeyCode>>,
     mut query: Query<(&PlatformController, &mut Transform), (With<SteerablePlatform>, Without<XrTrackingRoot>)>,
 ) {
     for (controller, mut transform) in query.iter_mut() {
         let mut movement = Vec3::ZERO;
         let mut rotation = 0.0;
+        let dt = time.delta_secs();
 
         // Keyboard controls for testing (WASD + QE for rotation)
         if keys.pressed(KeyCode::KeyW) {
-            movement.z -= 1.0;
+            movement.z += 1.0;
         }
         if keys.pressed(KeyCode::KeyS) {
-            movement.z += 1.0;
+            movement.z -= 1.0;
         }
         if keys.pressed(KeyCode::KeyA) {
             movement.x -= 1.0;
@@ -120,7 +122,7 @@ fn platform_controls(
 
         // Normalize movement vector and apply speed
         if movement != Vec3::ZERO {
-            movement = movement.normalize() * controller.speed;
+            movement = movement.normalize() * controller.speed * dt;
             // Transform movement to local space
             let forward = transform.forward();
             let right = transform.right();
@@ -132,7 +134,7 @@ fn platform_controls(
         // Apply rotation
         if rotation != 0.0 {
             // Apply rotation directly to transform
-            let rotation_amount = rotation * controller.rotation_speed * 0.1; // Scale down for smoother rotation
+            let rotation_amount = rotation * controller.rotation_speed * dt;
             let rotation_quat = Quat::from_rotation_y(rotation_amount);
             transform.rotation = rotation_quat * transform.rotation;
         }
@@ -145,9 +147,11 @@ fn follow_xr_rig(
 ) {
     if let Some(steerable_platform_transform) = steerable_platform.iter().next() {
         // there should be only one xr_tracking_root
+        let mut i = 0;
         for mut xr_tracking_root_transform in xr_tracking_root.iter_mut() {
             *xr_tracking_root_transform = *steerable_platform_transform;
-            // assert if counts many
+            i = i + 1;
+            assert_eq!(i,1, "Multiple XrTrackingRoot found, don´t instantiate your own!");
         }
     }
 }
